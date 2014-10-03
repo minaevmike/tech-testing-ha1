@@ -1,6 +1,6 @@
 [run]
-branch = True
 source = source
+branch = True
 omit =
     source/config/*
     source/tests/*
