@@ -1,7 +1,7 @@
 import unittest
 import mock
 from notification_pusher import *
-import notification_pusher
+
 
 
 class NotificationPusherTestCase(unittest.TestCase):
@@ -10,13 +10,14 @@ class NotificationPusherTestCase(unittest.TestCase):
 
         task = mock.Mock()
         data = {'callback_url': '://'}
-        task.data.copy = mock.Mock(return_value=data)
+        task.data.copy = mock.Mock(return_value = data)
 
 
         task_queue = mock.MagicMock()
-        response = mock.Mock(return_value={'status_code': 200})
+        response = mock.Mock()
+        response.status_code = 200
 
-        with mock.patch('requests.post', mock.Mock(return_value=response)), mock.patch.object(json, 'dumps', mock.Mock()):
+        with mock.patch('requests.post', mock.Mock(return_value = response)), mock.patch.object(json, 'dumps', mock.Mock()):
             notification_worker(task, task_queue)
 
         task_queue.put.assert_called_with((task, 'ack'))
@@ -26,15 +27,51 @@ class NotificationPusherTestCase(unittest.TestCase):
 
         task = mock.Mock()
         data = {'callback_url': '://'}
-        task.data.copy = mock.Mock(return_value=data)
+        task.data.copy = mock.Mock(return_value = data)
 
 
         task_queue = mock.MagicMock()
 
-        with mock.patch('requests.post', mock.Mock(side_effect=requests.RequestException("Ebury"))), mock.patch.object(json, 'dumps', mock.Mock()):
+        with mock.patch('requests.post', mock.Mock(side_effect = requests.RequestException('EBury'))), mock.patch.object(json, 'dumps', mock.Mock()):
             notification_worker(task, task_queue)
 
         task_queue.put.assert_called_with((task, 'bury'))
+
+
+    def test_done_with_processed_tasks_succ(self):
+        task = mock.Mock()
+        task_queue = mock.Mock()
+        task_queue.qsize = mock.Mock(return_value = 1)
+        task_queue.get_nowait = mock.Mock(return_value = (task, 'action'))
+
+        m_logger = mock.MagicMock()
+        with mock.patch('notification_pusher.logger', m_logger):
+            done_with_processed_tasks(task_queue)
+        self.assertFalse(m_logger.exception.called)
+
+
+    def test_done_with_processed_tasks_getattr_fail(self):
+        task = mock.Mock()
+        task.action = mock.Mock(side_effect = tarantool.DatabaseError())
+        task_queue = mock.Mock()
+        task_queue.qsize = mock.Mock(return_value = 1)
+        task_queue.get_nowait = mock.Mock(return_value = (task, 'action'))
+
+        m_logger = mock.MagicMock()
+        with mock.patch('notification_pusher.logger', m_logger):
+            done_with_processed_tasks(task_queue)
+        self.assertTrue(m_logger.exception.called)
+
+
+    def test_done_with_processed_tasks_empty_list(self):
+        task_queue = mock.Mock()
+        task_queue.qsize = mock.Mock(return_value = 1)
+        task_queue.get_nowait = mock.Mock(side_effect = gevent.queue.Empty)
+
+        m_logger = mock.MagicMock()
+        with mock.patch('notification_pusher.logger.debug', m_logger):
+            done_with_processed_tasks(task_queue)
+        self.assertFalse(m_logger.debug.called)
 
 
     pass
