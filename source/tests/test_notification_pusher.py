@@ -68,10 +68,10 @@ class NotificationPusherTestCase(unittest.TestCase):
         task_queue.qsize = mock.Mock(return_value = 1)
         task_queue.get_nowait = mock.Mock(side_effect = gevent.queue.Empty)
 
-        m_logger = mock.MagicMock()
-        with mock.patch('notification_pusher.logger.debug', m_logger):
+        d_logger = mock.MagicMock()
+        with mock.patch('notification_pusher.logger.debug', d_logger):
             done_with_processed_tasks(task_queue)
-        self.assertFalse(m_logger.debug.called)
+        d_logger.assert_any_call('gevent_queue.Empty')
 
 
     pass
