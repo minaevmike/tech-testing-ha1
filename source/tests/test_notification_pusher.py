@@ -21,4 +21,20 @@ class NotificationPusherTestCase(unittest.TestCase):
 
         task_queue.put.assert_called_with((task, 'ack'))
 
+
+    def test_notification_worker_ack_bury(self):
+
+        task = mock.Mock()
+        data = {'callback_url': '://'}
+        task.data.copy = mock.Mock(return_value=data)
+
+
+        task_queue = mock.MagicMock()
+
+        with mock.patch('requests.post', mock.Mock(side_effect=requests.RequestException("Ebury"))), mock.patch.object(json, 'dumps', mock.Mock()):
+            notification_worker(task, task_queue)
+
+        task_queue.put.assert_called_with((task, 'bury'))
+
+
     pass
