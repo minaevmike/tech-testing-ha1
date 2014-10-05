@@ -1,7 +1,7 @@
 import unittest
 import mock
 from notification_pusher import *
-
+import notification_pusher
 
 
 class NotificationPusherTestCase(unittest.TestCase):
@@ -72,6 +72,13 @@ class NotificationPusherTestCase(unittest.TestCase):
         with mock.patch('notification_pusher.logger.debug', d_logger):
             done_with_processed_tasks(task_queue)
         d_logger.assert_any_call('gevent_queue.Empty')
+
+
+    def test_stop_handler(self):
+        notification_pusher.run_application = True
+        stop_handler(exit_code)
+        assert not notification_pusher.run_application
+
 
 
     pass
