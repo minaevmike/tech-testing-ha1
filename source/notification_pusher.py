@@ -32,6 +32,8 @@ exit_code = 0
 
 logger = logging.getLogger('pusher')
 
+SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT)
+
 
 def notification_worker(task, task_queue, *args, **kwargs):
     """
@@ -190,7 +192,7 @@ def install_signal_handlers():
     """
     logger.info('Install signal handlers.')
 
-    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT):
+    for signum in SIGNALS:
         gevent.signal(signum, stop_handler, signum)
 
 
