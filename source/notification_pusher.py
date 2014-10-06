@@ -33,7 +33,7 @@ exit_code = 0
 logger = logging.getLogger('pusher')
 
 SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT)
-
+STOP_APPLICATION_LOOT_STR = 'Stop application loop.'
 
 def notification_worker(task, task_queue, *args, **kwargs):
     """
@@ -182,7 +182,7 @@ def main_loop(config):
 
         sleep(config.SLEEP)
     else:
-        logger.info('Stop application loop.')
+        logger.info(STOP_APPLICATION_LOOT_STR)
 
 
 
