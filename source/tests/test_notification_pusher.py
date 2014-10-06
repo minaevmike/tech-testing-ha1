@@ -26,10 +26,14 @@ def main_runner(daem, create_pf, logger, args, run = False):
          mock.patch('notification_pusher.daemonize', daem),\
          mock.patch('notification_pusher.create_pidfile', create_pf),\
          mock.patch('source.notification_pusher.load_config_from_pyfile', mock.Mock(return_value = config)): #WTF I need source. here?
-                notification_pusher.main(args)
+                main(args)
 
 
 class NotificationPusherTestCase(unittest.TestCase):
+    def setUp(self):
+        self.old_logger_info = notification_pusher.logger.info
+        notification_pusher.logger.info = mock.Mock()
+
 
     def test_notification_worker_ack_succ(self):
         task = mock.Mock()
@@ -152,56 +156,59 @@ class NotificationPusherTestCase(unittest.TestCase):
         self.assertTrue(m_signal.call_count == len(SIGNALS))
 
 
-    # def test_main_succ_without_run(self):
-    #     m_daemonize = mock.Mock()
-    #     m_create_pidfile = mock.Mock()
-    #     m_logger = mock.Mock()
-    #     main_runner(m_daemonize, m_create_pidfile, m_logger, ['','-c', './source/config/pusher_config.py'])
-    #
-    #     self.assertFalse(m_daemonize.called)
-    #     self.assertFalse(m_create_pidfile.called)
-    #     self.assertTrue(m_logger.info.called)
-    #
-    # def test_main_daemon_succ(self):
-    #     m_daemonize = mock.Mock()
-    #     m_create_pidfile = mock.Mock()
-    #     m_logger = mock.Mock()
-    #     main_runner(m_daemonize, m_create_pidfile, m_logger, ['','-d','-c', './source/config/pusher_config.py'])
-    #
-    #     self.assertTrue(m_daemonize.called)
-    #     self.assertFalse(m_create_pidfile.called)
-    #     self.assertTrue(m_logger.info.called)
-    #
-    # def test_main_pidfile_succ(self):
-    #     m_daemonize = mock.Mock()
-    #     m_create_pidfile = mock.Mock()
-    #     m_logger = mock.Mock()
-    #     main_runner(m_daemonize, m_create_pidfile, m_logger, ['','-c', './source/config/pusher_config.py', '-P', '0'])
-    #
-    #     self.assertFalse(m_daemonize.called)
-    #     self.assertTrue(m_create_pidfile.called)
-    #     self.assertTrue(m_logger.info.called)
-    #
-    #
-    # def test_main_run_succ(self):
-    #     m_main_loop = mock.Mock()
-    #     with mock.patch('notification_pusher.main_loop', m_main_loop):
-    #          main_runner(mock.Mock(), mock.Mock(), mock.Mock(), ['','-c', './source/config/pusher_config.py'])
-    #
-    #     m_main_loop.assert_called_once()
-    #
-    #
-    # def test_main_run_fail(self):
-    #     m_main_loop = mock.Mock(side_effect = Exception("E"))
-    #     m_logger = mock.Mock()
-    #     notification_pusher.run_application = True
-    #     with mock.patch('notification_pusher.sleep', mock.Mock(side_effect = stop_notification_pusher)),\
-    #          mock.patch('notification_pusher.logger', m_logger),\
-    #          mock.patch('notification_pusher.main_loop', m_main_loop):
-    #          main_runner(mock.Mock(), mock.Mock(), m_logger, ['','-c', './source/config/pusher_config.py'], run = True)
-    #
-    #     self.assertTrue(m_logger.error.called)
-    #
+    def test_main_succ_without_run(self):
+        m_daemonize = mock.Mock()
+        m_create_pidfile = mock.Mock()
+        m_logger = mock.Mock()
+
+        main_runner(m_daemonize, m_create_pidfile, m_logger, ['','-c', './source/config/pusher_config.py'])
+
+        self.assertFalse(m_daemonize.called)
+        self.assertFalse(m_create_pidfile.called)
+        self.assertTrue(m_logger.info.called)
+
+
+    def test_main_daemon_succ(self):
+        m_daemonize = mock.Mock()
+        m_create_pidfile = mock.Mock()
+        m_logger = mock.Mock()
+        main_runner(m_daemonize, m_create_pidfile, m_logger, ['','-d','-c', './source/config/pusher_config.py'])
+
+        self.assertTrue(m_daemonize.called)
+        self.assertFalse(m_create_pidfile.called)
+        self.assertTrue(m_logger.info.called)
+
+
+    def test_main_pidfile_succ(self):
+        m_daemonize = mock.Mock()
+        m_create_pidfile = mock.Mock()
+        m_logger = mock.Mock()
+        main_runner(m_daemonize, m_create_pidfile, m_logger, ['','-c', './source/config/pusher_config.py', '-P', '0'])
+
+        self.assertFalse(m_daemonize.called)
+        self.assertTrue(m_create_pidfile.called)
+        self.assertTrue(m_logger.info.called)
+
+
+    def test_main_run_succ(self):
+        m_main_loop = mock.Mock(side_effect = stop_notification_pusher)
+        with mock.patch('notification_pusher.main_loop', m_main_loop):
+             main_runner(mock.Mock(), mock.Mock(), mock.Mock(), ['','-c', './source/config/pusher_config.py'], run = True)
+
+        m_main_loop.assert_called_once()
+
+
+    def test_main_run_fail(self):
+        m_main_loop = mock.Mock(side_effect = Exception("E"))
+        m_logger = mock.Mock()
+        notification_pusher.run_application = True
+        with mock.patch('notification_pusher.sleep', mock.Mock(side_effect = stop_notification_pusher)),\
+             mock.patch('notification_pusher.logger', m_logger),\
+             mock.patch('notification_pusher.main_loop', m_main_loop):
+             main_runner(mock.Mock(), mock.Mock(), m_logger, ['','-c', './source/config/pusher_config.py'], run = True)
+
+        self.assertTrue(m_logger.error.called)
+
 
 
 
