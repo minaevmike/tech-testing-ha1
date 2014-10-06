@@ -162,7 +162,6 @@ def main_loop(config):
             logger.debug('Get task from tube for worker#{number}.'.format(number=number))
 
             task = tube.take(config.QUEUE_TAKE_TIMEOUT)
-
             if task:
                 logger.info('Start worker#{number} for task id={task_id}.'.format(
                     task_id=task.task_id, number=number

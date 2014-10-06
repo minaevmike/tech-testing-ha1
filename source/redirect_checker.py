@@ -12,7 +12,7 @@ from lib.utils import (check_network_status, create_pidfile, daemonize,
 from lib.worker import worker
 
 logger = logging.getLogger('redirect_checker')
-
+is_run = True
 
 def main_loop(config):
     logger.info(
@@ -20,10 +20,9 @@ def main_loop(config):
             config.WORKER_POOL_SIZE, config.SLEEP
         ))
     parent_pid = os.getpid()
-    while True:
+    while is_run:
         if check_network_status(config.CHECK_URL, config.HTTP_TIMEOUT):
-            required_workers_count = config.WORKER_POOL_SIZE - len(
-                active_children())
+            required_workers_count = config.WORKER_POOL_SIZE - len(active_children())
             if required_workers_count > 0:
                 logger.info(
                     'Spawning {} workers'.format(required_workers_count))

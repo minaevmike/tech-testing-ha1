@@ -8,6 +8,9 @@ from tarantool_queue import Queue
 def stop_notification_pusher(*smth):
     notification_pusher.run_application = False
 
+def start_notification_pusher(*smth):
+    notification_pusher.run_application = True
+
 def make_conf():
     config = mock.Mock()
     config.QUEUE_HOST = '0.0.0.0'
@@ -16,6 +19,7 @@ def make_conf():
     config.WORKER_POOL_SIZE = 1
     config.QUEUE_TAKE_TIMEOUT = 100
     config.SLEEP_ON_FAIL = 0
+    config.SLEEP = 1
     return config
 
 def main_runner(daem, create_pf, logger, args, run = False):
@@ -32,7 +36,7 @@ def main_runner(daem, create_pf, logger, args, run = False):
 class NotificationPusherTestCase(unittest.TestCase):
     def setUp(self):
         self.old_logger_info = notification_pusher.logger.info
-        notification_pusher.logger.info = mock.Mock()
+        notification_pusher.logger = mock.MagicMock()
 
 
     def test_notification_worker_ack_succ(self):
@@ -123,19 +127,18 @@ class NotificationPusherTestCase(unittest.TestCase):
 
         taker = mock.MagicMock()
         with mock.patch('tarantool_queue.tarantool_queue.Tube.take', taker):
-            main_loop(config)
+            with mock.patch('notification_pusher.sleep', mock.Mock(side_effect=stop_notification_pusher)):
+                main_loop(config)
         self.assertFalse(taker.called)
 
 
     def test_mainloop_worker_succ(self):
         config = make_conf()
-
-        taker = mock.Mock()
         worker = mock.Mock()
-        with mock.patch('tarantool_queue.tarantool_queue.Tube.take', taker),\
-             mock.patch('gevent.Greenlet', mock.Mock(return_value = worker)):
-            main_loop(config)
-        self.assertFalse(taker.called)
+        with mock.patch('tarantool_queue.tarantool_queue.Tube.take', mock.MagicMock()) as taker,\
+             mock.patch('gevent.Greenlet', mock.Mock(return_value=worker)):
+            with mock.patch('notification_pusher.sleep', mock.Mock(side_effect=stop_notification_pusher)):
+                main_loop(config)
         worker.start.assert_called_once()
 
 
@@ -202,7 +205,7 @@ class NotificationPusherTestCase(unittest.TestCase):
         m_main_loop = mock.Mock(side_effect = Exception("E"))
         m_logger = mock.Mock()
         notification_pusher.run_application = True
-        with mock.patch('notification_pusher.sleep', mock.Mock(side_effect = stop_notification_pusher)),\
+        with mock.patch('notification_pusher.sleep', mock.Mock(side_effect=stop_notification_pusher)),\
              mock.patch('notification_pusher.logger', m_logger),\
              mock.patch('notification_pusher.main_loop', m_main_loop):
              main_runner(mock.Mock(), mock.Mock(), m_logger, ['','-c', './source/config/pusher_config.py'], run = True)
@@ -210,6 +213,5 @@ class NotificationPusherTestCase(unittest.TestCase):
         self.assertTrue(m_logger.error.called)
 
 
-
-
-    pass
+    def tearDown(self):
+        start_notification_pusher()
