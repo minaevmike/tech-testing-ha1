@@ -1,36 +1,24 @@
-from argparse import Namespace
+import json
+import requests
+import tarantool
+import tarantool_queue
 import unittest
+import gevent
 import mock
-from notification_pusher import *
-import notification_pusher
-from tarantool_queue import Queue
+from argparse import Namespace
+from source import notification_pusher
 
 def stop_notification_pusher(*smth):
     notification_pusher.run_application = False
 
-def make_conf():
-    config = mock.Mock()
-    config.QUEUE_HOST = '0.0.0.0'
-    config.QUEUE_PORT = 1234
-    config.QUEUE_SPACE = 0
-    config.WORKER_POOL_SIZE = 1
-    config.QUEUE_TAKE_TIMEOUT = 100
-    config.SLEEP_ON_FAIL = 0
-    return config
-
-def main_runner(daem, create_pf, logger, args, run = False):
-    config = make_conf()
-    notification_pusher.run_application = run
-    with mock.patch('notification_pusher.logger', logger),\
-         mock.patch('notification_pusher.patch_all', mock.Mock()),\
-         mock.patch('notification_pusher.daemonize', daem),\
-         mock.patch('notification_pusher.create_pidfile', create_pf),\
-         mock.patch('source.notification_pusher.load_config_from_pyfile', mock.Mock(return_value = config)): #WTF I need source. here?
-                notification_pusher.main(args)
-
 
 class NotificationPusherTestCase(unittest.TestCase):
-
+    def setUp(self):
+            notification_pusher.logger = mock.MagicMock()
+            self.config = mock.MagicMock()
+            setattr(self.config, "LOGGING", {"version": 1})
+            setattr(self.config, "WORKER_POOL_SIZE", 10)
+            notification_pusher.parse_cmd_args = mock.Mock()
     def test_notification_worker_ack_succ(self):
         task = mock.Mock()
         data = {'callback_url': '://'}
@@ -41,7 +29,7 @@ class NotificationPusherTestCase(unittest.TestCase):
         response.status_code = 200
 
         with mock.patch('requests.post', mock.Mock(return_value = response)), mock.patch('json.dumps', mock.Mock()):
-            notification_worker(task, task_queue)
+            notification_pusher.notification_worker(task, task_queue)
 
         task_queue.put.assert_called_with((task, 'ack'))
 
@@ -56,7 +44,7 @@ class NotificationPusherTestCase(unittest.TestCase):
         with mock.patch('requests.post', mock.Mock(side_effect = requests.RequestException('EBury'))),\
              mock.patch('notification_pusher.logger', mock.Mock()),\
              mock.patch('json.dumps', mock.Mock()):
-                notification_worker(task, task_queue)
+                notification_pusher.notification_worker(task, task_queue)
 
         task_queue.put.assert_called_with((task, 'bury'))
 
@@ -64,92 +52,63 @@ class NotificationPusherTestCase(unittest.TestCase):
     def test_done_with_processed_tasks_succ(self):
         task = mock.Mock()
         task_queue = mock.Mock()
-        task_queue.qsize = mock.Mock(return_value = 1)
-        task_queue.get_nowait = mock.Mock(return_value = (task, 'action'))
+        task_queue.qsize = mock.Mock(return_value=1)
+        task_queue.get_nowait = mock.Mock(return_value=(task, 'action'))
 
         m_logger = mock.MagicMock()
         with mock.patch('notification_pusher.logger', m_logger):
-            done_with_processed_tasks(task_queue)
+            notification_pusher.done_with_processed_tasks(task_queue)
         self.assertFalse(m_logger.exception.called)
 
 
     def test_done_with_processed_tasks_getattr_fail(self):
+        action_name = "action"
+        error = "error"
         task = mock.Mock()
-        task.action = mock.Mock(side_effect = tarantool.DatabaseError())
-        task_queue = mock.Mock()
-        task_queue.qsize = mock.Mock(return_value = 1)
-        task_queue.get_nowait = mock.Mock(return_value = (task, 'action'))
+        task.action = mock.Mock(side_effect=tarantool.DatabaseError(error))
 
-        m_logger = mock.MagicMock()
-        with mock.patch('notification_pusher.logger', m_logger):
-            done_with_processed_tasks(task_queue)
-        self.assertTrue(m_logger.exception.called)
+        queue = gevent.queue.Queue()
+        queue.qsize = mock.Mock(return_value=1)
+        queue.get_nowait = mock.Mock(return_value=(task, action_name))
 
+        notification_pusher.done_with_processed_tasks(queue)
+        assert notification_pusher.logger.exception.called
 
     def test_done_with_processed_tasks_empty_list(self):
         task_queue = mock.Mock()
-        task_queue.qsize = mock.Mock(return_value = 1)
-        task_queue.get_nowait = mock.Mock(side_effect = gevent.queue.Empty)
+        task_queue.qsize = mock.Mock(return_value=1)
+        task_queue.get_nowait = mock.Mock(side_effect=gevent.queue.Empty)
 
         m_logger = mock.MagicMock()
-        with mock.patch('notification_pusher.logger.debug', m_logger):
-            done_with_processed_tasks(task_queue)
-        m_logger.assert_any_call('gevent_queue.Empty')
+        with mock.patch('notification_pusher.logger.debug', m_logger) as logger:
+            notification_pusher.done_with_processed_tasks(task_queue)
+        logger.assert_any_call_('gevent_queue.Empty')
 
 
     def test_stop_handler_succ(self):
         notification_pusher.run_application = True
-        stop_handler(exit_code)
+        notification_pusher.stop_handler(notification_pusher.exit_code)
         self.assertTrue(notification_pusher.run_application == False)
 
 
-    def test_mainloop_conf_succ(self):
-        config = make_conf()
+    def test_main_loop_no_run(self):
+        queue = mock.Mock(name="queue")
+        queue.tube().take = mock.Mock(return_value=None)
+        tarantool_queue.Queue = mock.Mock(return_value=queue)
 
-        queue = mock.Mock(side_effect = stop_notification_pusher)
-        done = mock.MagicMock()
-        with mock.patch('gevent.queue.Queue', queue), mock.patch('notification_pusher.done_with_processed_tasks', done):
-            main_loop(config)
-        done.assert_called_once()
+        with mock.patch('source.notification_pusher.sleep',
+                        stop_notification_pusher),\
+             mock.patch('source.notification_pusher.Greenlet',
+                        mock.Mock()) as creation:
+            notification_pusher.main_loop(self.config)
 
-
-    def test_mainloop_worker_fail(self):
-        config = make_conf()
-        config.WORKER_POOL_SIZE = 0
-
-        taker = mock.MagicMock()
-        with mock.patch('tarantool_queue.tarantool_queue.Tube.take', taker):
-            main_loop(config)
-        self.assertFalse(taker.called)
-
-
-    def test_mainloop_worker_succ(self):
-        config = make_conf()
-
-        taker = mock.Mock()
-        worker = mock.Mock()
-        with mock.patch('tarantool_queue.tarantool_queue.Tube.take', taker),\
-             mock.patch('gevent.Greenlet', mock.Mock(return_value = worker)):
-            main_loop(config)
-        self.assertFalse(taker.called)
-        worker.start.assert_called_once()
-
-
-    def test_mainloop_app_no_run(self):
-        config = make_conf()
-        m_logger_info = mock.MagicMock()
-        notification_pusher.run_application = False
-        with mock.patch('notification_pusher.logger.info', m_logger_info):
-            main_loop(config)
-        m_logger_info.assert_called_with(STOP_APPLICATION_LOOT_STR)
-        notification_pusher.run_application = True
-
+        assert not creation.called
 
     def test_install_signal_handlers_succ(self):
         m_signal = mock.MagicMock()
         with mock.patch('gevent.signal', m_signal):
-            install_signal_handlers()
-        self.assertTrue(m_signal.call_count == len(SIGNALS))
+            notification_pusher.install_signal_handlers()
+        self.assertTrue(m_signal.call_count == len(notification_pusher.SIGNALS))
 
 
     # def test_main_succ_without_run(self):
